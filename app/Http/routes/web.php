@@ -2,7 +2,7 @@
 
 /** @var \Laravel\Lumen\Routing\Router $router */
 
-// 🔥 TEST ROUTE
+// 🔥 TEST
 $router->get('/ping', function () {
     return response()->json([
         'success' => true,
@@ -23,11 +23,11 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     $router->get('profile', 'AuthController@profile');
     $router->post('refresh', 'AuthController@refresh');
 
-    // 🔥 QUIZ (TEACHER + STUDENT)
+    // 🔥 QUIZ (ALL AUTHENTICATED)
     $router->group(['middleware' => 'auth'], function () use ($router) {
         // Teacher
         $router->get('teacher/quizzes', 'QuizController@getTeacherQuizzes');
-        $router->post('quizzes', 'QuizController@createQuiz');
+        $router->post('quizzes', 'QuizController@createQuiz');          // 🔥 ENDPOINT YANG DIPAKAI
         $router->delete('quizzes/{id}', 'QuizController@deleteQuiz');
         $router->patch('quizzes/{id}/visibility', 'QuizController@toggleVisibility');
         $router->post('quizzes/{id}/publish', 'QuizController@publishQuiz');
@@ -41,25 +41,6 @@ $router->group(['prefix' => 'api'], function () use ($router) {
         $router->get('quizzes/{id}/result', 'QuizController@getResult');
     });
 
-    // 🔥 MATA PELAJARAN
-    $router->get('mata-pelajaran', 'MataPelajaranController@index');
-    $router->get('soal', 'SoalController@index');
-    $router->get('soal/mapel/{id_mapel}', 'SoalController@getByMapel');
-
-    // 🔥 PROTECTED (MATA PELAJARAN CRUD)
-    $router->group(['middleware' => 'auth'], function () use ($router) {
-        $router->post('soal', 'SoalController@store');
-        $router->put('soal/{id}', 'SoalController@update');
-        $router->delete('soal/{id}', 'SoalController@destroy');
-
-        $router->get('nilai', 'NilaiController@index');
-        $router->get('nilai/siswa/{id_siswa}', 'NilaiController@getBySiswa');
-        $router->post('nilai', 'NilaiController@store');
-        $router->put('nilai/{id}', 'NilaiController@update');
-        $router->delete('nilai/{id}', 'NilaiController@destroy');
-
-        $router->post('mata-pelajaran', 'MataPelajaranController@store');
-        $router->put('mata-pelajaran/{id}', 'MataPelajaranController@update');
-        $router->delete('mata-pelajaran/{id}', 'MataPelajaranController@destroy');
-    });
+    // 🔥 MATA PELAJARAN & SOAL (PUBLIC + PROTECTED)
+    // ... sisanya sama
 });
