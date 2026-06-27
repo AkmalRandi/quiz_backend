@@ -39,7 +39,7 @@ $app->register(App\Providers\AppServiceProvider::class);
 $app->register(App\Providers\AuthServiceProvider::class);
 $app->register(Tymon\JWTAuth\Providers\LumenServiceProvider::class);
 
-// 🔥 CONFIG JWT
+// 🔥 CONFIG
 $app->configure('jwt');
 $app->configure('auth');
 $app->configure('database');

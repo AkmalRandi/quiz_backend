@@ -2,44 +2,86 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\MataPelajaran;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
 
 class MataPelajaranController extends Controller
 {
     public function index()
     {
-        return response()->json(MataPelajaran::all());
+        try {
+            $data = MataPelajaran::with('guru')->get();
+            return response()->json([
+                'success' => true,
+                'data' => $data
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'nama_mapel' => 'required|unique:mata_pelajaran'
+        $this->validate($request, [
+            'nama' => 'required|string|max:100',
+            'deskripsi' => 'nullable|string',
+            'guru_id' => 'required|exists:users,id'
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 400);
+        try {
+            $mapel = MataPelajaran::create($request->all());
+            return response()->json([
+                'success' => true,
+                'data' => $mapel
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        $mapel = MataPelajaran::create($request->all());
-        return response()->json(['message' => 'Mata pelajaran created', 'data' => $mapel], 201);
     }
 
     public function update(Request $request, $id)
     {
-        $mapel = MataPelajaran::find($id);
-        if (!$mapel) return response()->json(['error' => 'Not found'], 404);
-        $mapel->update($request->all());
-        return response()->json(['message' => 'Updated', 'data' => $mapel]);
+        $this->validate($request, [
+            'nama' => 'string|max:100',
+            'deskripsi' => 'nullable|string',
+            'guru_id' => 'exists:users,id'
+        ]);
+
+        try {
+            $mapel = MataPelajaran::findOrFail($id);
+            $mapel->update($request->all());
+            return response()->json([
+                'success' => true,
+                'data' => $mapel
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function destroy($id)
     {
-        $mapel = MataPelajaran::find($id);
-        if (!$mapel) return response()->json(['error' => 'Not found'], 404);
-        $mapel->delete();
-        return response()->json(['message' => 'Deleted']);
+        try {
+            $mapel = MataPelajaran::findOrFail($id);
+            $mapel->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Deleted'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }
