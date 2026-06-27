@@ -13,11 +13,11 @@ class Quiz extends Model
         'title',
         'subject',
         'cover_image',
-        'description',
         'visibility',
         'join_code',
         'total_time',
-        'total_points'
+        'total_points',
+        'description'
     ];
 
     protected $casts = [
@@ -33,5 +33,10 @@ class Quiz extends Model
     public function questions()
     {
         return $this->hasMany(Question::class);
+    }
+
+    public function results()
+    {
+        return $this->hasMany(QuizResult::class);
     }
 }

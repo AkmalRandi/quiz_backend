@@ -38,6 +38,16 @@ class User extends Model implements AuthenticatableContract, AuthorizableContrac
         return [];
     }
 
+    public function quizzes()
+    {
+        return $this->hasMany(Quiz::class, 'teacher_id');
+    }
+
+    public function results()
+    {
+        return $this->hasMany(QuizResult::class, 'student_id');
+    }
+
     public function mataPelajaran()
     {
         return $this->hasMany(MataPelajaran::class, 'guru_id');

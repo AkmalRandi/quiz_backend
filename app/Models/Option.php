@@ -15,6 +15,10 @@ class Option extends Model
         'option_index'
     ];
 
+    protected $casts = [
+        'option_index' => 'integer'
+    ];
+
     public function question()
     {
         return $this->belongsTo(Question::class);

@@ -16,6 +16,11 @@ class Question extends Model
         'correct_index'
     ];
 
+    protected $casts = [
+        'points' => 'integer',
+        'correct_index' => 'integer'
+    ];
+
     public function quiz()
     {
         return $this->belongsTo(Quiz::class);

@@ -2,35 +2,87 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Nilai;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
 
 class NilaiController extends Controller
 {
     public function index()
     {
-        return response()->json(Nilai::with(['user', 'kuis'])->get());
+        try {
+            $data = Nilai::with(['siswa', 'mataPelajaran'])->get();
+            return response()->json([
+                'success' => true,
+                'data' => $data
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function getByUser($id_user)
+    public function getBySiswa($id_siswa)
     {
-        return response()->json(Nilai::where('id_user', $id_user)->with('kuis')->get());
+        try {
+            $data = Nilai::where('siswa_id', $id_siswa)
+                ->with('mataPelajaran')
+                ->get();
+            return response()->json([
+                'success' => true,
+                'data' => $data
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'id_user' => 'required|exists:users,id',
-            'id_kuis' => 'required|exists:kuis,id',
-            'skor' => 'required|integer|between:0,100'
+        $this->validate($request, [
+            'siswa_id' => 'required|exists:users,id',
+            'mapel_id' => 'required|exists:mata_pelajaran,id',
+            'nilai' => 'required|integer|min:0|max:100',
+            'jawaban' => 'nullable|json'
         ]);
 
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 400);
+        try {
+            $nilai = Nilai::create($request->all());
+            return response()->json([
+                'success' => true,
+                'data' => $nilai
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
+    }
 
-        $nilai = Nilai::create($request->all());
-        return response()->json(['message' => 'Nilai saved', 'nilai' => $nilai], 201);
+    public function update(Request $request, $id)
+    {
+        // implement
+    }
+
+    public function destroy($id)
+    {
+        try {
+            $nilai = Nilai::findOrFail($id);
+            $nilai->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Deleted'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }
