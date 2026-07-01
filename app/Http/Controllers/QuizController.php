@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Quiz;
 use App\Models\Question;
 use App\Models\Option;
+use App\Models\QuizResult;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 class QuizController extends Controller
 {
@@ -18,6 +18,7 @@ class QuizController extends Controller
     {
         try {
             $teacherId = auth()->user()->id;
+            
             $quizzes = Quiz::where('teacher_id', $teacherId)
                 ->with(['questions.options'])
                 ->orderBy('created_at', 'desc')
@@ -29,7 +30,6 @@ class QuizController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get teacher quizzes error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get quizzes: ' . $e->getMessage()
@@ -42,16 +42,12 @@ class QuizController extends Controller
      */
     public function createQuiz(Request $request)
     {
-        // 🔥 LOG DATA YANG MASUK
-        Log::info('📥 Create Quiz Request:', $request->all());
-
         $this->validate($request, [
             'title' => 'required|string|max:255',
             'subject' => 'nullable|string|max:100',
             'cover_image' => 'nullable|string',
             'visibility' => 'required|in:publish,private',
             'total_time' => 'required|integer|min:1',
-            'description' => 'nullable|string',
             'questions' => 'required|array|min:1',
             'questions.*.question' => 'required|string',
             'questions.*.options' => 'required|array|min:2',
@@ -60,8 +56,6 @@ class QuizController extends Controller
 
         try {
             $teacherId = auth()->user()->id;
-            Log::info('👤 Teacher ID: ' . $teacherId);
-
             $joinCode = strtoupper(Str::random(6));
 
             $quiz = Quiz::create([
@@ -75,21 +69,14 @@ class QuizController extends Controller
                 'description' => $request->description
             ]);
 
-            Log::info('✅ Quiz created with ID: ' . $quiz->id);
-
-            // 🔥 LOOP QUESTIONS
             foreach ($request->questions as $qIndex => $questionData) {
-                Log::info('📝 Processing question ' . ($qIndex + 1) . ':', $questionData);
-
                 $question = Question::create([
                     'quiz_id' => $quiz->id,
                     'question' => $questionData['question'],
                     'question_image' => $questionData['question_image'] ?? null,
                     'points' => $questionData['points'] ?? 1,
-                    'correct_index' => $questionData['correct_index'] ?? 0
+                    'correct_index' => $questionData['correct_index']
                 ]);
-
-                Log::info('✅ Question created with ID: ' . $question->id);
 
                 foreach ($questionData['options'] as $oIndex => $optionText) {
                     Option::create([
@@ -99,16 +86,12 @@ class QuizController extends Controller
                         'option_index' => $oIndex
                     ]);
                 }
-                Log::info('✅ Options created for question: ' . $question->id);
             }
 
             $totalPoints = Question::where('quiz_id', $quiz->id)->sum('points');
             $quiz->total_points = $totalPoints;
             $quiz->save();
-
             $quiz->load(['questions.options']);
-
-            Log::info('🎉 Quiz creation completed: ' . $quiz->id);
 
             return response()->json([
                 'success' => true,
@@ -117,11 +100,9 @@ class QuizController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
-            Log::error('❌ Create quiz error: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat quiz: ' . $e->getMessage()
+                'message' => 'Failed to create quiz: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -151,7 +132,6 @@ class QuizController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Delete quiz error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete quiz: ' . $e->getMessage()
@@ -185,12 +165,12 @@ class QuizController extends Controller
                 'message' => 'Visibility updated successfully',
                 'data' => [
                     'id' => $quiz->id,
-                    'visibility' => $newVisibility
+                    'visibility' => $newVisibility,
+                    'join_code' => $quiz->join_code
                 ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Toggle visibility error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update visibility: ' . $e->getMessage()
@@ -223,13 +203,12 @@ class QuizController extends Controller
                 'message' => 'Quiz published successfully',
                 'data' => [
                     'id' => $quiz->id,
-                    'join_code' => $quiz->join_code,
-                    'visibility' => 'publish'
+                    'visibility' => 'publish',
+                    'join_code' => $quiz->join_code
                 ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Publish quiz error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to publish quiz: ' . $e->getMessage()
@@ -237,8 +216,57 @@ class QuizController extends Controller
         }
     }
 
-    // ===== STUDENT METHODS =====
+    /**
+     * 🔥 TEACHER: GET QUIZ RESULTS
+     */
+    public function getQuizResults($id)
+    {
+        try {
+            $quiz = Quiz::where('teacher_id', auth()->user()->id)
+                ->where('id', $id)
+                ->first();
 
+            if (!$quiz) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Quiz not found or not yours'
+                ], 404);
+            }
+
+            $results = QuizResult::where('quiz_id', $id)
+                ->with('student')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $formattedResults = $results->map(function($result) {
+                return [
+                    'id' => $result->id,
+                    'studentName' => $result->student->full_name ?? $result->student->name ?? 'Unknown',
+                    'student_id' => $result->student_id,
+                    'score' => $result->score,
+                    'correct' => $result->correct_answers,
+                    'total' => $result->total_questions,
+                    'answers' => $result->answers,
+                    'date' => $result->created_at
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formattedResults
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get results: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 🔥 STUDENT: GET ALL PUBLISHED QUIZZES
+     */
     public function getStudentQuizzes(Request $request)
     {
         try {
@@ -247,13 +275,44 @@ class QuizController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
+            $formattedQuizzes = $quizzes->map(function($quiz) {
+                return [
+                    'id' => $quiz->id,
+                    'title' => $quiz->title,
+                    'subject' => $quiz->subject,
+                    'cover_image' => $quiz->cover_image,
+                    'description' => $quiz->description,
+                    'total_questions' => $quiz->questions->count(),
+                    'duration' => $quiz->total_time,
+                    'join_code' => $quiz->join_code,
+                    'visibility' => $quiz->visibility,
+                    'emoji' => $this->getEmoji($quiz->subject),
+                    'questions' => $quiz->questions->map(function($question) {
+                        $options = [];
+                        $optionsImages = [];
+                        foreach ($question->options as $option) {
+                            $options[] = $option->option_text;
+                            $optionsImages[] = $option->option_image;
+                        }
+                        return [
+                            'id' => $question->id,
+                            'question' => $question->question,
+                            'question_image' => $question->question_image,
+                            'options' => $options,
+                            'options_images' => $optionsImages,
+                            'correct_index' => (int) $question->correct_index,
+                            'points' => (int) $question->points
+                        ];
+                    })
+                ];
+            });
+
             return response()->json([
                 'success' => true,
-                'data' => $quizzes
+                'data' => $formattedQuizzes
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get student quizzes error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get quizzes: ' . $e->getMessage()
@@ -261,6 +320,9 @@ class QuizController extends Controller
         }
     }
 
+    /**
+     * 🔥 STUDENT: GET QUIZ DETAIL
+     */
     public function getQuizDetail($id)
     {
         try {
@@ -282,13 +344,42 @@ class QuizController extends Controller
                 ], 403);
             }
 
+            $formattedQuiz = [
+                'id' => $quiz->id,
+                'title' => $quiz->title,
+                'subject' => $quiz->subject,
+                'cover_image' => $quiz->cover_image,
+                'description' => $quiz->description,
+                'total_questions' => $quiz->questions->count(),
+                'duration' => $quiz->total_time,
+                'join_code' => $quiz->join_code,
+                'visibility' => $quiz->visibility,
+                'emoji' => $this->getEmoji($quiz->subject),
+                'questions' => $quiz->questions->map(function($question) {
+                    $options = [];
+                    $optionsImages = [];
+                    foreach ($question->options as $option) {
+                        $options[] = $option->option_text;
+                        $optionsImages[] = $option->option_image;
+                    }
+                    return [
+                        'id' => $question->id,
+                        'question' => $question->question,
+                        'question_image' => $question->question_image,
+                        'options' => $options,
+                        'options_images' => $optionsImages,
+                        'correct_index' => (int) $question->correct_index,
+                        'points' => (int) $question->points
+                    ];
+                })
+            ];
+
             return response()->json([
                 'success' => true,
-                'data' => $quiz
+                'data' => $formattedQuiz
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get quiz detail error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get quiz detail: ' . $e->getMessage()
@@ -296,6 +387,9 @@ class QuizController extends Controller
         }
     }
 
+    /**
+     * 🔥 STUDENT: JOIN QUIZ BY CODE
+     */
     public function joinQuiz(Request $request)
     {
         $this->validate($request, [
@@ -321,13 +415,41 @@ class QuizController extends Controller
                 ], 403);
             }
 
+            $formattedQuiz = [
+                'id' => $quiz->id,
+                'title' => $quiz->title,
+                'subject' => $quiz->subject,
+                'cover_image' => $quiz->cover_image,
+                'description' => $quiz->description,
+                'total_questions' => $quiz->questions->count(),
+                'duration' => $quiz->total_time,
+                'join_code' => $quiz->join_code,
+                'emoji' => $this->getEmoji($quiz->subject),
+                'questions' => $quiz->questions->map(function($question) {
+                    $options = [];
+                    $optionsImages = [];
+                    foreach ($question->options as $option) {
+                        $options[] = $option->option_text;
+                        $optionsImages[] = $option->option_image;
+                    }
+                    return [
+                        'id' => $question->id,
+                        'question' => $question->question,
+                        'question_image' => $question->question_image,
+                        'options' => $options,
+                        'options_images' => $optionsImages,
+                        'correct_index' => (int) $question->correct_index,
+                        'points' => (int) $question->points
+                    ];
+                })
+            ];
+
             return response()->json([
                 'success' => true,
-                'data' => $quiz
+                'data' => $formattedQuiz
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Join quiz error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to join quiz: ' . $e->getMessage()
@@ -335,6 +457,9 @@ class QuizController extends Controller
         }
     }
 
+    /**
+     * 🔥 STUDENT: START QUIZ
+     */
     public function startQuiz($id)
     {
         try {
@@ -361,7 +486,6 @@ class QuizController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Start quiz error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to start quiz: ' . $e->getMessage()
@@ -369,6 +493,9 @@ class QuizController extends Controller
         }
     }
 
+    /**
+     * 🔥 STUDENT: SUBMIT QUIZ ANSWERS
+     */
     public function submitQuiz(Request $request, $id)
     {
         $this->validate($request, [
@@ -384,6 +511,13 @@ class QuizController extends Controller
                     'success' => false,
                     'message' => 'Quiz not found'
                 ], 404);
+            }
+
+            if ($quiz->visibility !== 'publish') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Quiz is not published'
+                ], 403);
             }
 
             $studentId = auth()->user()->id;
@@ -432,7 +566,6 @@ class QuizController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Submit quiz error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to submit quiz: ' . $e->getMessage()
@@ -440,6 +573,9 @@ class QuizController extends Controller
         }
     }
 
+    /**
+     * 🔥 STUDENT: GET RESULT
+     */
     public function getResult($id)
     {
         try {
@@ -463,11 +599,30 @@ class QuizController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get result error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get result: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * 🔥 HELPER: GET EMOJI
+     */
+    private function getEmoji($subject)
+    {
+        $emojis = [
+            'Matematika' => '📐',
+            'Bahasa Indonesia' => '🇮🇩',
+            'Bahasa Inggris' => '🇬🇧',
+            'IPA' => '🔬',
+            'IPS' => '🌍',
+            'Sejarah' => '📜',
+            'PKN' => '🦅',
+            'Seni Budaya' => '🎭',
+            'Agama' => '📖',
+            'Penjaskes' => '⚽'
+        ];
+        return $emojis[$subject] ?? '📝';
     }
 }
